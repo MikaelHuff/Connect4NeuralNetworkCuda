@@ -1,10 +1,15 @@
 import numpy as np
 import os
 
+dataDir = __file__[0:-25]+'data\\'
+def get_data_dir():
+    return dataDir
+
+
 def read_network(saveValue=-1):
     if saveValue == -1:
         saveValue = os.listdir('data')[-1][15:-4]
-    npzfile = np.load('data\\Network Weights' + str(saveValue) + '.npz')
+    npzfile = np.load(dataDir + 'Network Weights' + str(saveValue) + '.npz')
     return [npzfile[npzfile.files[0]], npzfile[npzfile.files[1]]]
 
 

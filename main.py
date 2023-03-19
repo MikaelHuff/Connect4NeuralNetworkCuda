@@ -1,5 +1,4 @@
 import gameGUI
-import neuralNetTrainingPython as nnTrainPy6
 
 boardRowAmount = 6
 boardColumnAmount = 7
@@ -8,8 +7,14 @@ defaultPlayers = ('Human', 'Computer')
 # defaultPlayers = ('Human', 'Human')
 
 
+
 def main():
+    '''
+    This is the function that actually runs the entire game
+    '''
     gameGUI.menuGUI(boardRowAmount, boardColumnAmount, connectAmountToWin, defaultPlayers)
 
 
-main()
+if __name__ == '__main__':
+    # train_network_vectorized(1289)
+    main()

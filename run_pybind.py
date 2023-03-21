@@ -4,7 +4,7 @@ sys.path.append("C:/Users/mkhuff/Downloads/Python2Cuda_example/build/src/pybind1
 
 import cu_matrix_add as cudaM
 
-import numpy as npgi
+import numpy as np
 
 epsilon = 1 # 1e-50
 alpha = .01

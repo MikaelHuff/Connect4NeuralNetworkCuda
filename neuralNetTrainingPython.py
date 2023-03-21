@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import time
-
+import matplotlib.pyplot as plt
 import board
 import neuralNetPlayingPython as nnPlayPy
 
@@ -35,7 +35,7 @@ def save_network(network, gamesPlayed):
     np.savez(dataDir + 'Network Weights' + str(gamesPlayed) + '.npz', network[0], network[1])
 
 
-def train_network(networkLocation=0, playMethod='python', updateMethod='vectorized'):
+def train_network(networkLocation=0, playMethod='python', updateMethod='vectorized', showPlot=False):
     '''
     Trains a neural network
     :param networkLocation: Location of the file, This is given by the amount of games played, so 0 means new network
@@ -49,6 +49,7 @@ def train_network(networkLocation=0, playMethod='python', updateMethod='vectoriz
 
     gameNumber = networkLocation * 10000 + 1
     timeVec = np.zeros(3)
+    errorStats = []
     # While True, training occurs
     while True:
         # This block of code is to play the game. It first creates a new game.
@@ -84,20 +85,23 @@ def train_network(networkLocation=0, playMethod='python', updateMethod='vectoriz
 
                     # Updating the weights. Choose any of the following methods. Test does all 3, ensures matching outcomes, and checks time comparisons.
         if updateMethod == 'individual':
-            network = update_weights_individual(network, gameRecord, moveLabels)
+            deltas = update_weights_individual(gameRecord, moveLabels)
+            errorStats.append(np.sum(deltas[0]) +  np.sum(deltas[0]))
         elif updateMethod == 'vectorized':
-            network = update_weights_vectorized(network, gameRecord, moveLabels)
+            deltas = update_weights_vectorized(gameRecord, moveLabels)
+            errorStats.append(np.sum(deltas[0]) +  np.sum(deltas[0]))
+
         elif updateMethod == 'cuda':
             network = update_weights_cuda(network, gameRecord, moveLabels)
         elif updateMethod == 'test':
             start = time.time()
-            network1 = update_weights_individual([np.ndarray.copy(network[0]), np.ndarray.copy(network[1])], gameRecord, moveLabels)
+            deltas1 = update_weights_individual(gameRecord, moveLabels)
             time1 = time.time() - start
             start = time.time()
-            network2 = update_weights_vectorized([np.ndarray.copy(network[0]), np.ndarray.copy(network[1])], gameRecord, moveLabels)
+            deltas2 = update_weights_vectorized(gameRecord, moveLabels)
             time2 = time.time() - start
             start = time.time()
-            network3 = update_weights_cuda([np.ndarray.copy(network[0]), np.ndarray.copy(network[1])], gameRecord, moveLabels)
+            #deltas3 = update_weights_cuda(gameRecord, moveLabels)
             time3 = time.time() - start
 
             allTimes = [time1, time2, time3]
@@ -106,9 +110,11 @@ def train_network(networkLocation=0, playMethod='python', updateMethod='vectoriz
             else:
                 for i in range(3):
                     timeVec[i] = (timeVec[i] * (gameNumber - 1) + allTimes[i]) / gameNumber
-            assert (np.sum(network1[0] - network2[0]) + np.sum(network1[1] - network2[1]) < 1e-10), "Not matching values"
-            # assert (np.array_equal(network2,network3)), "Not matching values"
-            network = network2
+            assert (np.sum(deltas1[0] - deltas2[0]) + np.sum(deltas1[1] - deltas2[1]) < 1e-10), "Not matching values"
+            # assert (np.sum(deltas2[0] - deltas3[0]) + np.sum(deltas2[1] - deltas3[1]) < 1e-10), "Not matching values"
+            deltas = deltas1
+        network[0] = 1 / (1 + np.exp(deltas[0] - network[0]))
+        network[1] = 1 / (1 + np.exp(deltas[1] - network[1]))
 
         # Increase the gameNumber and deal with information. Every 1000 games, outputs values to see information on current network. Every 10,000 games, the network is saved.
         gameNumber += 1
@@ -117,6 +123,11 @@ def train_network(networkLocation=0, playMethod='python', updateMethod='vectoriz
             print(gameNumber, ': Average run times for individual: ', timeVec[0], ', for vectorized: ', timeVec[1], ', and for cuda: ', timeVec[2])
         if gameNumber % 1000 == 0:
             print(gameNumber, np.sum(network[0]), network[0].max() - network[0].min(), np.sum(network[1]), network[1].max() - network[1].min())
+            if showPlot:
+                fig, ax = plt.subplots()
+                ax.plot(range(gameNumber-1), errorStats)
+                plt.show()
+                plt.pause(5)
         if gameNumber % 10000 == 0:
             saveValue = int(gameNumber / 10000)
             save_network(network, saveValue)
@@ -125,7 +136,7 @@ def train_network(networkLocation=0, playMethod='python', updateMethod='vectoriz
             print("Network saved")
 
 
-def update_weights_individual(network, gameRecord, labels):
+def update_weights_individual(gameRecord, labels):
     '''
     Updates the weights for the given network. This function does it by using for loops to individually update each single weight
     :param network: The neural network
@@ -133,8 +144,9 @@ def update_weights_individual(network, gameRecord, labels):
     :param labels: The values the network should have achieved
     :return: An updated network
     '''
-    inputWeightsDelta = np.zeros(np.shape(network[0]))
-    hiddenWeightsDelta = np.zeros(np.shape(network[1]))
+    dims = [len(gameRecord[0][1]),len(gameRecord[0][2]),len(gameRecord[0][3])]
+    inputWeightsDelta = np.zeros((dims[0],dims[1]))
+    hiddenWeightsDelta = np.zeros((dims[1],dims[2]))
     turnAmount = len(gameRecord)
     # The first set of loops, is used to update the weights for each hidden layer node
     for turn in range(turnAmount):
@@ -142,8 +154,7 @@ def update_weights_individual(network, gameRecord, labels):
             outputError = gameRecord[turn][3][outputNode] - labels[turn, outputNode]
             for node in range(hiddenNodeAmount):
                 impact = gameRecord[turn][2][node]
-                hiddenWeightsDelta[node, outputNode] += impact * outputError / turnAmount
-    network[1] -= alpha * hiddenWeightsDelta
+                hiddenWeightsDelta[node, outputNode] += alpha * impact * outputError / turnAmount
 
     # The second set of loops, is used to update the weights for each input layer node
     for turn in range(turnAmount):
@@ -151,15 +162,12 @@ def update_weights_individual(network, gameRecord, labels):
             outputError = np.sum(hiddenWeightsDelta, axis=1)[outputNode]
             for node in range(boardColumnAmount * boardRowAmount):
                 impact = gameRecord[turn][1][node]
-                inputWeightsDelta[node, outputNode] += impact * outputError / turnAmount
-    network[0] -= alpha * inputWeightsDelta
+                inputWeightsDelta[node, outputNode] += alpha * impact * outputError / turnAmount
 
-    network[0] = 1 / (1 + np.exp(-network[0]))
-    network[1] = 1 / (1 + np.exp(-network[1]))
-    return network
+    return [inputWeightsDelta, hiddenWeightsDelta]
 
 
-def update_weights_vectorized(network, gameRecord, labels):
+def update_weights_vectorized(gameRecord, labels):
     '''
     Updates the weights for the given network. This function does it by using for loops to individually update each single weight
     :param network: The neural network
@@ -167,29 +175,26 @@ def update_weights_vectorized(network, gameRecord, labels):
     :param labels: The values the network should have achieved
     :return: An updated network
     '''
-    inputWeightsDelta = np.zeros(np.shape(network[0]))
-    hiddenWeightsDelta = np.zeros(np.shape(network[1]))
+    dims = [len(gameRecord[0][1]),len(gameRecord[0][2]),len(gameRecord[0][3])]
+    inputWeightsDelta = np.zeros((dims[0],dims[1]))
+    hiddenWeightsDelta = np.zeros((dims[1],dims[2]))
     turnAmount = len(gameRecord)
     # The first set of loops, is used to update the weights for each hidden layer node
     for turn in range(turnAmount):
         outputErrorMat = gameRecord[turn][3] - np.expand_dims(labels[turn],axis=1)
         impactMat = gameRecord[turn][2]
-        hiddenWeightsDelta += np.multiply(impactMat, outputErrorMat.transpose()) / turnAmount
-    network[1] -= alpha * hiddenWeightsDelta  # (1-alpha) *
+        hiddenWeightsDelta += alpha * np.multiply(impactMat, outputErrorMat.transpose()) / turnAmount
 
     # The second set of loops, is used to update the weights for each input layer node
     for turn in range(turnAmount):
         outputErrorMat = np.expand_dims(np.sum(hiddenWeightsDelta, axis=1), axis=1)
         impactMat = np.expand_dims(gameRecord[turn][1], axis=1)
         inputWeightsDelta += np.multiply(impactMat, outputErrorMat.transpose()) / turnAmount
-    network[0] -= alpha * inputWeightsDelta  # (1-alpha)
 
-    network[0] = 1 / (1 + np.exp(-network[0]))
-    network[1] = 1 / (1 + np.exp(-network[1]))
-    return network
+    return [inputWeightsDelta, hiddenWeightsDelta]
 
 
-def update_weights_cuda(network, gameRecord, labels):
+def update_weights_cuda(gameRecord, labels):
     '''
     Updates the weights for the given network. This function does it by using for loops to individually update each single weight
     :param network: The neural network
@@ -197,8 +202,8 @@ def update_weights_cuda(network, gameRecord, labels):
     :param labels: The values the network should have achieved
     :return: An updated network
     '''
-    # network = pybi.update_weights(network, gameRecord, labels)
-    return network
+    # deltas = pybi.update_weights(gameRecord, labels)
+    return 0
 
 
 def get_scaling_factor(idx, amount):
@@ -209,4 +214,4 @@ def get_scaling_factor(idx, amount):
 
 if __name__ == '__main__':
     # train_network_vectorized(1289)
-    train_network(updateMethod='test')
+    train_network(updateMethod='test', showPlot=True)

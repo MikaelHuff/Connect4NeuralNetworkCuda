@@ -21,8 +21,8 @@ def menuGUI(rowAmount, colAmount, amountToWin, players):
     layout = [[sg.Text('Row Amount'), sg.Push(), sg.In(size=(15, 10), key='_rowAmt_', default_text=str(rowAmount))],
               [sg.Text('Column Amount'), sg.Push(), sg.In(size=(15, 10), key='_colAmt_', default_text=str(colAmount))],
               [sg.Text('Amount to Win'), sg.Push(), sg.In(size=(15, 10), key='_winAmt_', default_text=str(amountToWin))],
-              [sg.Text('Player 1'), sg.Push(), sg.Combo(['Human', 'Computer'], default_value=players[0], key='_P1_')],
-              [sg.Text('Player 2'), sg.Push(), sg.Combo(['Human', 'Computer'], default_value=players[1], key='_P2_')],
+              [sg.Text('Player 1'), sg.Push(), sg.Combo(['Human', 'Computer', 'ComputerCuda'], default_value=players[0], key='_P1_')],
+              [sg.Text('Player 2'), sg.Push(), sg.Combo(['Human', 'Computer', 'ComputerCuda'], default_value=players[1], key='_P2_')],
               [sg.Push(), sg.Button('Start')],
               [sg.Push(), sg.Button('Close')]]
     window = sg.Window('Connect 4 Menu', layout)
@@ -114,10 +114,14 @@ def boardGUI(rowAmount, colAmount, amountToWin, players):
             break
 
         # This occurs to make a move when it is the turn for the computer. If both players are computers, this while loop will continue until game end.
-        while players[int((-1*gameState.get_player+ 1)/2)] == 'Computer' and not gameOver:
+        while players[int((-1*gameState.get_player+ 1)/2)] != 'Human' and not gameOver:
             if players[int((gameState.get_player+ 1)/2)] == 'Human':
                 time.sleep(.1)
-            move = nnPlay.find_best_move(gameState)
+            if players[int((-1*gameState.get_player+ 1)/2)] == 'Computer':
+                move = nnPlay.find_best_move(gameState)
+            else:
+                move = nnPlay.find_best_move(gameState, 'cuda')
+
             height, result = gameState.update_board(move)
             window['_board ' + str(height) + ',' + str(int(move)) + '_'].update(imageDir + pieceColors[-1*gameState._player + 1] + '.png', size=(64, 64))
             if result == -1:

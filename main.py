@@ -16,5 +16,4 @@ def main():
 
 
 if __name__ == '__main__':
-    # train_network_vectorized(1289)
     main()
